@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# File: phvm
+# Usage:
+#   phvm list       - list installed PHP versions
+#   phvm use 8.2    - switch to PHP 8.2
+#   phvm current    - show current PHP version
+#   phvm help       - show help
+
+PHVM_DIR="$HOME/.phvm"
+PHVM_CONFIG="$PHVM_DIR/.phvmrc"
+
+if [ -f "$PHVM_CONFIG" ]; then
+    source "$PHVM_CONFIG"
+fi
+
+init_config() {
+    if [ -f "$PHVM_CONFIG" ]; then
+        echo "$PHVM_CONFIG already exists."
+    else
+        mkdir -p "$(dirname "$PHVM_CONFIG")"
+        cat <<EOF > "$PHVM_CONFIG"
+# ~/.phvmrc - phvm configuration
+
+PHP_DIRS=(
+  "/opt/homebrew/opt"
+  "/usr/local/opt"
+)
+EOF
+        echo "Initialized phvm config at $PHVM_CONFIG"
+    fi
+}
+
+detect_php_versions() {
+    local versions=()
+
+    for base in "${PHP_DIRS[@]}"; do
+        for path in "$base"/php@*; do
+            [ -d "$path/bin" ] && versions+=("$path")
+        done
+    done
+
+    # Add versions from PATH if not already included
+    which -a php | while read -r phpbin; do
+        resolved=$(readlink "$phpbin" || echo "$phpbin")
+        base=$(dirname "$(dirname "$resolved")")
+        [[ ! " ${versions[*]} " =~ " $base " ]] && versions+=("$base")
+    done
+
+    echo "${versions[@]}"
+}
+
+list_php_versions() {
+    local output="Installed PHP versions:"
+    for path in $(detect_php_versions); do
+        ver=$("$path/bin/php" -r 'echo PHP_VERSION;')
+        output+="\n  - $ver ($path)"
+    done
+    echo -e "$output"
+}
+
+open_config() {
+    vi $PHVM_CONFIG
+}
+
+use_php_version() {
+    local target="$1"
+    local formula="php@$target"
+
+    if [ ! -d "/opt/homebrew/opt/$formula" ]; then
+        echo "PHP version $target is not installed (expected at /opt/homebrew/opt/$formula)."
+        echo "Install it with: brew install $formula"
+        return 1
+    fi
+
+    echo "Unlinking any currently linked PHP..."
+    for v in /opt/homebrew/opt/php@*; do
+        vname=$(basename "$v")
+        brew unlink "$vname" > /dev/null 2>&1
+    done
+
+    echo "Linking $formula..."
+    brew link "$formula" --force --overwrite
+
+    echo "Switched to PHP $target"
+    php -v | head -n 1
+}
+
+
+
+show_current_version() {
+    php -v | head -n 1
+}
+
+show_help() {
+    cat <<EOF
+PHP Version Manager (phvm)
+
+Usage:
+  phvm init         - Initializes PHP Version Manager config
+  phvm list         - List installed PHP versions
+  phvm use <ver>    - Use PHP version (e.g. phvm use 8.2)
+  phvm current      - Show current PHP version
+  phvm config        - Opens the default config file
+  phvm help         - Show this help
+
+EOF
+}
+
+case "$1" in
+    init) init_config ;;
+    list) list_php_versions ;;
+    use) shift; use_php_version "$1" ;;
+    current) show_current_version ;;
+    config) open_config ;;
+    help | *) show_help ;;
+esac

@@ -1,0 +1,6 @@
+# ~/.phvmrc - phvm configuration
+
+PHP_DIRS=(
+  "/opt/homebrew/opt"
+  "/usr/local/opt"
+)
